@@ -1,5 +1,4 @@
 /******************************************************************************/
-/* Golf Cart Air Cannon trigger                                               */
 /* Gus Michel II, 2 Aug 2018                                                  */
 /*                                                                            */
 /* Hardware:                                                                  */
@@ -26,18 +25,18 @@
 /******************************************************************************/
 
 /* pin definitions, subject to change */
-const int DURAT_PIN=A3, PRESS_PIN = A2, FIRE_PIN=A0, SOLENOID_PIN=6;
+const int DURAT_PIN=A2, PRESS_PIN = A3, FIRE_PIN=A0, SOLENOID_PIN=6;
 const int DIGIT1=9, DIGIT2=8, DIGIT3=4, DIGIT4=2;
 const int SEGA=14, SEGB=10, SEGC=15, SEGD=7, SEGE=5, SEGF=A1, SEGG=16, SEGH=3;
 const int ON=1, OFF=0;
 
 /* LED and lockout durations and lock times, all longs, in microseconds */
-const long LED_INT=1000, LOOP_INT=20000, FIRE_INT=1000000, PRESS_INT=500000;
-long loopLock, fireLock, pressLock;
+const long LED_INT=1000, LOOP_INT=20000, FIRE_INT=1000000, PRESS_INT=5000000, DURAT_INT=5000000;
+long loopLock, fireLock, pressLock, duratLock;
 
 /* pressure memory is stored in AtoD counts, not dPSI */
-const int PRESS_THRESH = 3;
-int prevPres;
+const int PRESS_THRESH = 3, DURAT_THRESH = 1;
+int prevPres, prevDurat;
 
 void setup() {  // put your setup code here, to run once:
   loopLock=fireLock=pressLock=micros(); /* clear lockouts */
@@ -45,7 +44,6 @@ void setup() {  // put your setup code here, to run once:
   pinMode(DURAT_PIN, INPUT);
   pinMode(PRESS_PIN, INPUT);
   pinMode(FIRE_PIN, INPUT_PULLUP);
-  pinMode(DURAT_PIN, OUTPUT);
   pinMode(SOLENOID_PIN, OUTPUT);
   digitalWrite(SOLENOID_PIN, LOW);
   prevPres = analogRead(PRESS_PIN);
@@ -81,19 +79,25 @@ void loop() {  // put your main code here, to run repeatedly:
   if (tim<loopLock) return;
   loopLock=tim + LOOP_INT;
   int curPres = analogRead(PRESS_PIN);
-  Serial.print(curPres); Serial.print(" ");
+  int curDurat = get_interval();
   if (!digitalRead(FIRE_PIN) && tim >= fireLock) {    /* Fire button pressed */
     fire_cannon();
     fireLock = tim + FIRE_INT;   /* lock out the fire function */
   } else { /* display pressure if changing, duration otherwise */
+    if (curDurat-prevDurat>DURAT_THRESH || prevDurat-curDurat>DURAT_THRESH) {
+      prevDurat=curDurat;
+      duratLock = tim + DURAT_INT;
+    }
     if (curPres-prevPres>PRESS_THRESH || prevPres-curPres>PRESS_THRESH) {    /* lock in showing pressure */
       prevPres=curPres;
       pressLock = tim + PRESS_INT;
     }
-    if (tim < pressLock) { /* display either pressure or interval */
+    if (tim < duratLock) {
+      show_interval(curDurat);
+    } else if (tim < pressLock) { /* display either pressure or interval */
       show_pressure(todPSI(curPres));
     } else {
-      show_interval(get_interval());
+      show_interval(curDurat);
     }
   }
   Serial.println(get_interval());
@@ -111,7 +115,7 @@ void fire_cannon() { /* fires the cannon, right? */
 }
 
 int get_interval() { /* returns solenoid interval in tenths of milliseconds */
-  int interval = analogRead(DURAT_PIN);
+  int interval = (1023-analogRead(DURAT_PIN))<<1;
   return(interval); /* TODO add offset and possibly scale */
 }
 
